@@ -15,6 +15,16 @@
 -- limitations under the License.
 --
 local require         = require
+-- set the JIT options before any code, to prevent error "changing jit stack size is not
+-- allowed when some regexs have already been compiled and cached"
+if require("ffi").os == "Linux" then
+    require("ngx.re").opt("jit_stack_size", 200 * 1024)
+end
+
+require("jit.opt").start("minstitch=2", "maxtrace=4000",
+                         "maxrecord=8000", "sizemcode=64",
+                         "maxmcode=4000", "maxirconst=1000")
+
 require("apisix.patch").patch()
 local core            = require("apisix.core")
 local plugin          = require("apisix.plugin")
@@ -30,6 +40,7 @@ local upstream_util   = require("apisix.utils.upstream")
 local ctxdump         = require("resty.ctxdump")
 local ipmatcher       = require("resty.ipmatcher")
 local ngx_balancer    = require("ngx.balancer")
+local debug           = require("apisix.debug")
 local ngx             = ngx
 local get_method      = ngx.req.get_method
 local ngx_exit        = ngx.exit
@@ -42,6 +53,7 @@ local ngx_var         = ngx.var
 local str_byte        = string.byte
 local str_sub         = string.sub
 local tonumber        = tonumber
+local pairs           = pairs
 local control_api_router
 
 local is_http = false
@@ -59,16 +71,6 @@ local _M = {version = 0.4}
 
 
 function _M.http_init(args)
-    require("resty.core")
-
-    if require("ffi").os == "Linux" then
-        require("ngx.re").opt("jit_stack_size", 200 * 1024)
-    end
-
-    require("jit.opt").start("minstitch=2", "maxtrace=4000",
-                             "maxrecord=8000", "sizemcode=64",
-                             "maxmcode=4000", "maxirconst=1000")
-
     core.resolver.init_resolver(args)
     core.id.init()
 
@@ -112,6 +114,8 @@ function _M.http_init_worker()
 
     require("apisix.timers").init_worker()
 
+    require("apisix.debug").init_worker()
+
     plugin.init_worker()
     router.http_init_worker()
     require("apisix.http.service").init_worker()
@@ -122,7 +126,6 @@ function _M.http_init_worker()
         core.config.init_worker()
     end
 
-    require("apisix.debug").init_worker()
     apisix_upstream.init_worker()
     require("apisix.plugins.ext-plugin.init").init_worker()
 
@@ -226,7 +229,9 @@ local function parse_domain_in_route(route)
     -- don't modify the modifiedIndex to avoid plugin cache miss because of DNS resolve result
     -- has changed
 
-    route.dns_value = core.table.deepcopy(route.value)
+    -- Here we copy the whole route instead of part of it,
+    -- so that we can avoid going back from route.value to route during copying.
+    route.dns_value = core.table.deepcopy(route).value
     route.dns_value.upstream.nodes = new_nodes
     core.log.info("parse route which contain domain: ",
                   core.json.delay_encode(route, true))
@@ -310,7 +315,7 @@ local function verify_tls_client(ctx)
             if res == "NONE" then
                 core.log.error("client certificate was not present")
             else
-                core.log.error("clent certificate verification is not passed: ", res)
+                core.log.error("client certificate verification is not passed: ", res)
             end
 
             return false
@@ -351,6 +356,8 @@ function _M.http_access_phase()
 
     core.ctx.set_vars_meta(api_ctx)
 
+    debug.dynamic_debug(api_ctx)
+
     local uri = api_ctx.var.uri
     if local_conf.apisix and local_conf.apisix.delete_uri_tail_slash then
         if str_byte(uri, #uri) == str_byte("/") then
@@ -360,21 +367,17 @@ function _M.http_access_phase()
         end
     end
 
-    if router.api.has_route_not_under_apisix() or
-        core.string.has_prefix(uri, "/apisix/")
-    then
-        local skip = local_conf and local_conf.apisix.global_rule_skip_internal_api
-        local matched = router.api.match(api_ctx, skip)
-        if matched then
-            return
-        end
-    end
+    -- To prevent being hacked by untrusted request_uri, here we
+    -- record the normalized but not rewritten uri as request_uri,
+    -- the original request_uri can be accessed via var.real_request_uri
+    api_ctx.var.real_request_uri = api_ctx.var.request_uri
+    api_ctx.var.request_uri = api_ctx.var.uri .. api_ctx.var.is_args .. (api_ctx.var.args or "")
 
     router.router_http.match(api_ctx)
 
     local route = api_ctx.matched_route
     if not route then
-        -- run global rule
+        -- run global rule when there is no matching route
         plugin.run_global_rules(api_ctx, router.global_rules, nil)
 
         core.log.info("not find any matched route")
@@ -434,7 +437,7 @@ function _M.http_access_phase()
         script.run("access", api_ctx)
 
     else
-        local plugins = plugin.filter(route)
+        local plugins = plugin.filter(api_ctx, route)
         api_ctx.plugins = plugins
 
         plugin.run_plugin("rewrite", plugins, api_ctx)
@@ -452,7 +455,7 @@ function _M.http_access_phase()
             if changed then
                 api_ctx.matched_route = route
                 core.table.clear(api_ctx.plugins)
-                api_ctx.plugins = plugin.filter(route, api_ctx.plugins)
+                api_ctx.plugins = plugin.filter(api_ctx, route, api_ctx.plugins)
             end
         end
         plugin.run_plugin("access", plugins, api_ctx)
@@ -567,8 +570,27 @@ end
 
 
 local function set_resp_upstream_status(up_status)
-    core.response.set_header("X-APISIX-Upstream-Status", up_status)
-    core.log.info("X-APISIX-Upstream-Status: ", up_status)
+    local_conf = core.config.local_conf()
+
+    if local_conf.apisix and local_conf.apisix.show_upstream_status_in_response_header then
+        core.response.set_header("X-APISIX-Upstream-Status", up_status)
+    elseif #up_status == 3 then
+        if tonumber(up_status) >= 500 and tonumber(up_status) <= 599 then
+            core.response.set_header("X-APISIX-Upstream-Status", up_status)
+        end
+    elseif #up_status > 3 then
+        -- the up_status can be "502, 502" or "502, 502 : "
+        local last_status
+        if str_byte(up_status, -1) == str_byte(" ") then
+            last_status = str_sub(up_status, -6, -3)
+        else
+            last_status = str_sub(up_status, -3)
+        end
+
+        if tonumber(last_status) >= 500 and tonumber(last_status) <= 599 then
+            core.response.set_header("X-APISIX-Upstream-Status", up_status)
+        end
+    end
 end
 
 
@@ -586,26 +608,25 @@ function _M.http_header_filter_phase()
     core.response.set_header("Server", ver_header)
 
     local up_status = get_var("upstream_status")
-    if up_status and #up_status == 3
-       and tonumber(up_status) >= 500
-       and tonumber(up_status) <= 599
-    then
+    if up_status then
         set_resp_upstream_status(up_status)
-    elseif up_status and #up_status > 3 then
-        -- the up_status can be "502, 502" or "502, 502 : "
-        local last_status
-        if str_byte(up_status, -1) == str_byte(" ") then
-            last_status = str_sub(up_status, -6, -3)
-        else
-            last_status = str_sub(up_status, -3)
-        end
-
-        if tonumber(last_status) >= 500 and tonumber(last_status) <= 599 then
-            set_resp_upstream_status(up_status)
-        end
     end
 
     common_phase("header_filter")
+
+    local api_ctx = ngx.ctx.api_ctx
+    if not api_ctx then
+        return
+    end
+
+    local debug_headers = api_ctx.debug_headers
+    if debug_headers then
+        local deduplicate = core.table.new(core.table.nkeys(debug_headers), 0)
+        for k, v in pairs(debug_headers) do
+            core.table.insert(deduplicate, k)
+        end
+        core.response.set_header("Apisix-Plugins", core.table.concat(deduplicate, ", "))
+    end
 end
 
 
@@ -689,12 +710,8 @@ function _M.http_log_phase()
         api_ctx.server_picker.after_balance(api_ctx, false)
     end
 
-    if api_ctx.uri_parse_param then
-        core.tablepool.release("uri_parse_param", api_ctx.uri_parse_param)
-    end
-
     core.ctx.release_vars(api_ctx)
-    if api_ctx.plugins and api_ctx.plugins ~= core.empty_tab then
+    if api_ctx.plugins then
         core.tablepool.release("plugins", api_ctx.plugins)
     end
 
@@ -754,6 +771,7 @@ function _M.http_admin()
         router = admin_init.get()
     end
 
+    core.response.set_header("Server", ver_header)
     -- add cors rsp header
     cors_admin()
 

@@ -22,7 +22,7 @@ local schema = {
     properties = {
         type = {
             type = "string",
-            enum = {"consumer_name", "service_id"},
+            enum = {"consumer_name", "service_id", "route_id"},
             default = "consumer_name"
         },
         blacklist = {
@@ -51,7 +51,8 @@ local schema = {
                 }
             }
         },
-        rejected_code = {type = "integer", minimum = 200, default = 403}
+        rejected_code = {type = "integer", minimum = 200, default = 403},
+        rejected_msg = {type = "string"}
     },
     anyOf = {
         {required = {"blacklist"}},
@@ -70,6 +71,9 @@ local _M = {
 }
 
 local fetch_val_funcs = {
+    ["route_id"] = function(ctx)
+        return ctx.route_id
+    end,
     ["service_id"] = function(ctx)
         return ctx.service_id
     end,
@@ -102,7 +106,10 @@ local function is_method_allowed(allowed_methods, method, user)
 end
 
 local function reject(conf)
-    return conf.rejected_code, { message = "The " .. conf.type .. " is forbidden." }
+    if conf.rejected_msg then
+        return conf.rejected_code , { message = conf.rejected_msg }
+    end
+    return conf.rejected_code , { message = "The " .. conf.type .. " is forbidden."}
 end
 
 function _M.check_schema(conf)

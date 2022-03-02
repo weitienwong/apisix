@@ -212,6 +212,15 @@ my $a6_ngx_directives = "";
 if ($version =~ m/\/apisix-nginx-module/) {
     $a6_ngx_directives = <<_EOC_;
     apisix_delay_client_max_body_check on;
+    apisix_mirror_on_demand on;
+    wasm_vm wasmtime;
+_EOC_
+}
+
+my $a6_ngx_vars = "";
+if ($version =~ m/\/apisix-nginx-module/) {
+    $a6_ngx_vars = <<_EOC_;
+    set \$wasm_process_req_body       '';
 _EOC_
 }
 
@@ -249,6 +258,8 @@ _EOC_
     if ($stream_tls_request) {
         # generate a springboard to send tls stream request
         $block->set_value("stream_conf_enable", 1);
+        # avoid conflict with stream_enable
+        $block->set_value("stream_enable");
         $block->set_value("request", "GET /stream_tls_request");
 
         my $sni = "nil";
@@ -300,7 +311,44 @@ _EOC_
         $block->set_value("config", $config)
     }
 
+    # handling shell exec in test Nginx
+    my $exec_snippet = $block->exec;
+    if ($exec_snippet) {
+        # capture the stdin & max response size
+        my $stdin = "nil";
+        if ($block->stdin) {
+            $stdin = '"' . $block->stdin . '"';
+        }
+        chomp  $exec_snippet;
+        chomp $stdin;
+
+        my $max_size = $block->max_size // 8096;
+        $block->set_value("request", "GET /exec_request");
+
+        my $config = $block->config // '';
+        $config .= <<_EOC_;
+            location /exec_request {
+                content_by_lua_block {
+                    local shell = require("resty.shell")
+                    local ok, stdout, stderr, reason, status = shell.run([[ $exec_snippet ]], $stdin, @{[$timeout*1000]}, $max_size)
+                    if not ok then
+                        ngx.log(ngx.WARN, "failed to execute the script with status: " .. status .. ", reason: " .. reason .. ", stderr: " .. stderr)
+                        return
+                    end
+                    ngx.print(stdout)
+                }
+            }
+_EOC_
+
+        $block->set_value("config", $config)
+    }
+
     my $stream_enable = $block->stream_enable;
+    if ($block->stream_request) {
+        # Like stream_tls_request, if stream_request is given, automatically enable stream
+        $stream_enable = 1;
+    }
+
     my $stream_conf_enable = $block->stream_conf_enable;
     my $extra_stream_config = $block->extra_stream_config // '';
     my $stream_upstream_code = $block->stream_upstream_code // <<_EOC_;
@@ -315,6 +363,7 @@ _EOC_
 
     lua_shared_dict lrucache-lock-stream 10m;
     lua_shared_dict plugin-limit-conn-stream 10m;
+    lua_shared_dict etcd-cluster-health-check-stream 10m;
 
     upstream apisix_backend {
         server 127.0.0.1:1900;
@@ -380,7 +429,17 @@ _EOC_
     }
 
     proxy_pass apisix_backend;
+_EOC_
 
+    if ($version =~ m/\/apisix-nginx-module/) {
+        $stream_server_config .= <<_EOC_;
+    proxy_ssl_server_name on;
+    proxy_ssl_name \$upstream_sni;
+    set \$upstream_sni "apisix_backend";
+_EOC_
+    }
+
+    $stream_server_config .= <<_EOC_;
     log_by_lua_block {
         apisix.stream_log_phase()
     }
@@ -445,6 +504,7 @@ _EOC_
     lua_shared_dict plugin-api-breaker 10m;
     lua_capture_error_log 1m;    # plugin error-log-logger
     lua_shared_dict etcd-cluster-health-check 10m; # etcd health check
+    lua_shared_dict ext-plugin 1m;
 
     proxy_ssl_name \$upstream_host;
     proxy_ssl_server_name on;
@@ -590,14 +650,14 @@ _EOC_
     my $TEST_NGINX_HTML_DIR = $ENV{TEST_NGINX_HTML_DIR} ||= html_dir();
     my $ipv6_listen_conf = '';
     if (defined $block->listen_ipv6) {
-        $ipv6_listen_conf = "listen \[::1\]:12345;"
+        $ipv6_listen_conf = "listen \[::1\]:1984;"
     }
 
     my $config = $block->config // '';
     $config .= <<_EOC_;
         $ipv6_listen_conf
 
-        listen 1994 ssl;
+        listen 1994 ssl http2;
         ssl_certificate             cert/apisix.crt;
         ssl_certificate_key         cert/apisix.key;
         lua_ssl_trusted_certificate cert/apisix.crt;
@@ -661,11 +721,12 @@ _EOC_
             set \$upstream_cache_key             '';
             set \$upstream_cache_bypass          '';
             set \$upstream_no_cache              '';
+            $a6_ngx_vars
 
             proxy_cache                         \$upstream_cache_zone;
             proxy_cache_valid                   any 10s;
             proxy_cache_min_uses                1;
-            proxy_cache_methods                 GET HEAD;
+            proxy_cache_methods                 GET HEAD POST;
             proxy_cache_lock_timeout            5s;
             proxy_cache_use_stale               off;
             proxy_cache_key                     \$upstream_cache_key;
@@ -728,11 +789,17 @@ _EOC_
 
         location = /proxy_mirror {
             internal;
+_EOC_
 
+    if ($version !~ m/\/apisix-nginx-module/) {
+        $config .= <<_EOC_;
             if (\$upstream_mirror_host = "") {
                 return 200;
             }
+_EOC_
+    }
 
+    $config .= <<_EOC_;
             proxy_http_version 1.1;
             proxy_set_header Host \$upstream_host;
             proxy_pass \$upstream_mirror_host\$request_uri;

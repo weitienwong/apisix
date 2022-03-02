@@ -428,7 +428,7 @@ GET /t
 GET /t
 --- error_code: 400
 --- response_body
-{"error_msg":"failed to check the configuration of plugin limit-conn err: property \"conn\" validation failed: expected -1 to be strictly greater than 0"}
+{"error_msg":"failed to check the configuration of plugin limit-conn err: property \"conn\" validation failed: expected -1 to be greater than 0"}
 --- no_error_log
 [error]
 
@@ -511,7 +511,7 @@ GET /t
 GET /t
 --- error_code: 400
 --- response_body
-{"error_msg":"failed to check the configuration of plugin limit-conn err: property \"conn\" validation failed: expected -1 to be strictly greater than 0"}
+{"error_msg":"failed to check the configuration of plugin limit-conn err: property \"conn\" validation failed: expected -1 to be greater than 0"}
 --- no_error_log
 [error]
 
@@ -980,8 +980,8 @@ GET /test_concurrency
 --- request
 GET /t
 --- response_body
-property "conn" validation failed: expected 0 to be strictly greater than 0
-property "default_conn_delay" validation failed: expected 0 to be strictly greater than 0
+property "conn" validation failed: expected 0 to be greater than 0
+property "default_conn_delay" validation failed: expected 0 to be greater than 0
 done
 --- no_error_log
 [error]
@@ -1242,7 +1242,8 @@ done
                             "burst": 0,
                             "default_conn_delay": 0.3,
                             "rejected_code": 503,
-                            "key": "remote_addr"
+                            "key": "remote_addr",
+                            "allow_degradation": true
                         }
                     },
                     "upstream": {
@@ -1281,5 +1282,49 @@ passed
     200, 200, 200,
     200, 200, 200
 ]
+--- no_error_log
+[error]
+
+
+
+=== TEST 34: invalid route: wrong allow_degradation
+--- config
+    location /t {
+        content_by_lua_block {
+            local t = require("lib.test_admin").test
+            local code, body = t('/apisix/admin/routes/1',
+                 ngx.HTTP_PUT,
+                 [[{
+                        "plugins": {
+                            "limit-conn": {
+                                    "conn": 1,
+                                    "burst": 1,
+                                    "default_conn_delay": 0.1,
+                                    "rejected_code": 503,
+                                    "key": "remote_addr",
+                                    "allow_degradation": "true1"
+                                }
+                        },
+                        "upstream": {
+                            "nodes": {
+                                "127.0.0.1:1980": 1
+                            },
+                            "type": "roundrobin"
+                        },
+                        "uri": "/limit_conn"
+                }]]
+                )
+
+            if code >= 300 then
+                ngx.status = code
+            end
+            ngx.print(body)
+        }
+    }
+--- request
+GET /t
+--- error_code: 400
+--- response_body
+{"error_msg":"failed to check the configuration of plugin limit-conn err: property \"allow_degradation\" validation failed: wrong type: expected boolean, got string"}
 --- no_error_log
 [error]

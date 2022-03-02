@@ -21,7 +21,7 @@ title: 自定义 Nginx 配置
 #
 -->
 
-APISIX 会通过 `apisix/ngx_tpl.lua` 这个模板和 `conf/config-default.yaml` 加 `conf/config.yaml` 的配置生成 Nginx 配置文件。
+APISIX 会通过 `apisix/cli/ngx_tpl.lua` 这个模板和 `conf/config-default.yaml` 加 `conf/config.yaml` 的配置生成 Nginx 配置文件。
 
 在执行完 `./bin/apisix start`，你可以在 `conf/nginx.conf` 看到生成的 Nginx 配置文件。
 
@@ -59,3 +59,5 @@ nginx_config:
         tcp_nodelay off;
 ...
 ```
+
+注意`nginx_config`及其子项的格式缩进，在执行`./bin/apisix start`时，错误的缩进将导致更新`conf/nginx.conf`文件失败。

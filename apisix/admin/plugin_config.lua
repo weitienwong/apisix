@@ -15,10 +15,12 @@
 -- limitations under the License.
 --
 local core = require("apisix.core")
+local get_routes = require("apisix.router").http_routes
 local utils = require("apisix.admin.utils")
 local schema_plugin = require("apisix.admin.plugins").check_schema
 local type = type
 local tostring = tostring
+local ipairs = ipairs
 
 
 local _M = {
@@ -70,13 +72,13 @@ function _M.put(id, conf)
 
     local ok, err = utils.inject_conf_with_prev_conf("plugin_config", key, conf)
     if not ok then
-        return 500, {error_msg = err}
+        return 503, {error_msg = err}
     end
 
     local res, err = core.etcd.set(key, conf)
     if not res then
         core.log.error("failed to put plugin config[", key, "]: ", err)
-        return 500, {error_msg = err}
+        return 503, {error_msg = err}
     end
 
     return res.status, res.body
@@ -91,7 +93,7 @@ function _M.get(id)
     local res, err = core.etcd.get(key, not id)
     if not res then
         core.log.error("failed to get plugin config[", key, "]: ", err)
-        return 500, {error_msg = err}
+        return 503, {error_msg = err}
     end
 
     utils.fix_count(res.body, id)
@@ -100,12 +102,30 @@ end
 
 
 function _M.delete(id)
+    if not id then
+        return 400, {error_msg = "missing plugin config id"}
+    end
+
+    local routes, routes_ver = get_routes()
+    if routes_ver and routes then
+        for _, route in ipairs(routes) do
+            if type(route) == "table" and route.value
+               and route.value.plugin_config_id
+               and tostring(route.value.plugin_config_id) == id then
+                return 400, {error_msg = "can not delete this plugin config,"
+                                         .. " route [" .. route.value.id
+                                         .. "] is still using it now"}
+            end
+        end
+    end
+
     local key = "/plugin_configs/" .. id
     local res, err = core.etcd.delete(key)
     if not res then
         core.log.error("failed to delete plugin config[", key, "]: ", err)
-        return 500, {error_msg = err}
+        return 503, {error_msg = err}
     end
+
 
     return res.status, res.body
 end
@@ -130,7 +150,7 @@ function _M.patch(id, conf, sub_path)
     local res_old, err = core.etcd.get(key)
     if not res_old then
         core.log.error("failed to get plugin config [", key, "]: ", err)
-        return 500, {error_msg = err}
+        return 503, {error_msg = err}
     end
 
     if res_old.status ~= 200 then
@@ -148,13 +168,13 @@ function _M.patch(id, conf, sub_path)
         if code then
             return code, err
         end
+        utils.inject_timestamp(node_value, nil, true)
     else
         node_value = core.table.merge(node_value, conf);
+        utils.inject_timestamp(node_value, nil, conf)
     end
 
     core.log.info("new conf: ", core.json.delay_encode(node_value, true))
-
-    utils.inject_timestamp(node_value, nil, conf)
 
     local ok, err = check_conf(id, node_value, true)
     if not ok then
@@ -164,7 +184,7 @@ function _M.patch(id, conf, sub_path)
     local res, err = core.etcd.atomic_set(key, node_value, nil, modified_index)
     if not res then
         core.log.error("failed to set new plugin config[", key, "]: ", err)
-        return 500, {error_msg = err}
+        return 503, {error_msg = err}
     end
 
     return res.status, res.body

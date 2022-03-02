@@ -117,12 +117,17 @@ global_rules:
 
 === TEST 4: common phase without matched route
 --- apisix_yaml
+routes:
+    -
+        uri: /apisix/prometheus/metrics
+        plugins:
+            public-api: {}
 global_rules:
     -
         id: 1
         plugins:
             cors:
-                allow_origins: "a.com,b.com"
+                allow_origins: "http://a.com,http://b.com"
 #END
 --- request
 GET /apisix/prometheus/metrics

@@ -1,5 +1,5 @@
 {
-  "version": 2.8,
+  "version": "2.12.0",
   "sidebar": [
     {
       "type": "category",
@@ -35,10 +35,10 @@
           "label": "General",
           "items": [
             "plugins/batch-requests",
-            "plugins/serverless",
             "plugins/redirect",
             "plugins/echo",
             "plugins/gzip",
+            "plugins/real-ip",
             "plugins/server-info",
             "plugins/ext-plugin-pre-req",
             "plugins/ext-plugin-post-req"
@@ -51,7 +51,9 @@
             "plugins/response-rewrite",
             "plugins/proxy-rewrite",
             "plugins/grpc-transcode",
-            "plugins/fault-injection"
+            "plugins/grpc-web",
+            "plugins/fault-injection",
+            "plugins/mocking"
           ]
         },
         {
@@ -64,7 +66,11 @@
             "plugins/authz-keycloak",
             "plugins/wolf-rbac",
             "plugins/openid-connect",
-            "plugins/hmac-auth"
+            "plugins/hmac-auth",
+            "plugins/authz-casbin",
+            "plugins/ldap-auth",
+            "plugins/opa",
+            "plugins/forward-auth"
           ]
         },
         {
@@ -76,7 +82,9 @@
             "plugins/ip-restriction",
             "plugins/ua-restriction",
             "plugins/referer-restriction",
-            "plugins/consumer-restriction"
+            "plugins/consumer-restriction",
+            "plugins/csrf",
+            "plugins/public-api"
           ]
         },
         {
@@ -92,31 +100,63 @@
             "plugins/api-breaker",
             "plugins/traffic-split",
             "plugins/request-id",
+            "plugins/proxy-control",
             "plugins/client-control"
           ]
         },
         {
           "type": "category",
-          "label": "Monitoring",
+          "label": "Observability",
           "items": [
-            "plugins/prometheus",
-            "plugins/zipkin",
-            "plugins/skywalking",
-            "plugins/node-status"
+            {
+              "type": "category",
+              "label": "Tracers",
+              "items": [
+                "plugins/zipkin",
+                "plugins/skywalking",
+                "plugins/opentelemetry"
+              ]
+            },
+            {
+              "type": "category",
+              "label": "Metrics",
+              "items": [
+                "plugins/prometheus",
+                "plugins/node-status",
+                "plugins/datadog"
+              ]
+            },
+            {
+              "type": "category",
+              "label": "Loggers",
+              "items": [
+                "plugins/http-logger",
+                "plugins/skywalking-logger",
+                "plugins/tcp-logger",
+                "plugins/kafka-logger",
+                "plugins/rocketmq-logger",
+                "plugins/udp-logger",
+                "plugins/clickhouse-logger",
+                "plugins/syslog",
+                "plugins/log-rotate",
+                "plugins/error-log-logger",
+                "plugins/sls-logger",
+                "plugins/google-cloud-logging",
+                "plugins/splunk-hec-logging",
+                "plugins/file-logger",
+                "plugins/loggly"
+              ]
+            }
           ]
         },
         {
           "type": "category",
-          "label": "Loggers",
+          "label": "Serverless",
           "items": [
-            "plugins/http-logger",
-            "plugins/tcp-logger",
-            "plugins/kafka-logger",
-            "plugins/udp-logger",
-            "plugins/syslog",
-            "plugins/log-rotate",
-            "plugins/error-log-logger",
-            "plugins/sls-logger"
+            "plugins/serverless",
+            "plugins/azure-functions",
+            "plugins/openwhisk",
+            "plugins/aws-lambda"
           ]
         },
         {
@@ -208,11 +248,15 @@
         },
         {
           "type": "doc",
+          "id": "apisix-variable"
+        },
+        {
+          "type": "doc",
           "id": "external-plugin"
         },
         {
           "type": "doc",
-          "id": "plugin-interceptors"
+          "id": "wasm"
         },
         {
           "type": "link",
@@ -235,6 +279,7 @@
           "type": "category",
           "label": "internal",
           "items": [
+            "internal/plugin-runner",
             "internal/testing-framework"
           ]
         },

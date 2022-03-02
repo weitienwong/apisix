@@ -18,6 +18,7 @@ local core_str     = require("apisix.core.string")
 local core_tab     = require("apisix.core.table")
 local request      = require("apisix.core.request")
 local log          = require("apisix.core.log")
+local json         = require("apisix.core.json")
 local config_local = require("apisix.core.config_local")
 local tablepool    = require("tablepool")
 local get_var      = require("resty.ngxvar").fetch
@@ -36,7 +37,52 @@ local pcall        = pcall
 
 
 local _M = {version = 0.2}
-local GRAPHQL_DEFAULT_MAX_SIZE = 1048576               -- 1MiB
+local GRAPHQL_DEFAULT_MAX_SIZE       = 1048576               -- 1MiB
+local GRAPHQL_REQ_DATA_KEY           = "query"
+local GRAPHQL_REQ_METHOD_HTTP_GET    = "GET"
+local GRAPHQL_REQ_METHOD_HTTP_POST   = "POST"
+local GRAPHQL_REQ_MIME_JSON          = "application/json"
+
+
+local fetch_graphql_data = {
+    [GRAPHQL_REQ_METHOD_HTTP_GET] = function(ctx, max_size)
+        local body = request.get_uri_args(ctx)[GRAPHQL_REQ_DATA_KEY]
+        if not body then
+            return nil, "failed to read graphql data, args[" ..
+                        GRAPHQL_REQ_DATA_KEY .. "] is nil"
+        end
+
+        if type(body) == "table" then
+            body = body[1]
+        end
+
+        return body
+    end,
+
+    [GRAPHQL_REQ_METHOD_HTTP_POST] = function(ctx, max_size)
+        local body, err = request.get_body(max_size, ctx)
+        if not body then
+            return nil, "failed to read graphql data, " .. (err or "request body has zero size")
+        end
+
+        if request.header(ctx, "Content-Type") == GRAPHQL_REQ_MIME_JSON then
+            local res
+            res, err = json.decode(body)
+            if not res then
+                return nil, "failed to read graphql data, " .. err
+            end
+
+            if not res[GRAPHQL_REQ_DATA_KEY] then
+                return nil, "failed to read graphql data, json body[" ..
+                            GRAPHQL_REQ_DATA_KEY .. "] is nil"
+            end
+
+            body = res[GRAPHQL_REQ_DATA_KEY]
+        end
+
+        return body
+    end
+}
 
 
 local function parse_graphql(ctx)
@@ -51,9 +97,16 @@ local function parse_graphql(ctx)
         max_size = size
     end
 
-    local body, err = request.get_body(max_size, ctx)
+    local method = request.get_method()
+    local func = fetch_graphql_data[method]
+    if not func then
+        return nil, "graphql not support `" .. method .. "` request"
+    end
+
+    local body
+    body, err = func(ctx, max_size)
     if not body then
-        return nil, "failed to read graphql body: " .. err
+        return nil, err
     end
 
     local ok, res = pcall(gq_parse, body)
@@ -69,7 +122,8 @@ local function parse_graphql(ctx)
 end
 
 
-local function get_parsed_graphql(ctx)
+local function get_parsed_graphql()
+    local ctx = ngx.ctx.api_ctx
     if ctx._graphql then
         return ctx._graphql
     end
@@ -118,6 +172,12 @@ do
         end
     }
 
+    local no_cacheable_var_names = {
+        -- var.args should not be cached as it can be changed via set_uri_args
+        args = true,
+        is_args = true,
+    }
+
     local ngx_var_names = {
         upstream_scheme            = true,
         upstream_host              = true,
@@ -134,6 +194,17 @@ do
         upstream_cache_bypass      = true,
 
         var_x_forwarded_proto = true,
+    }
+
+    -- sort in alphabetical
+    local apisix_var_names = {
+        balancer_ip = true,
+        balancer_port = true,
+        consumer_name = true,
+        route_id = true,
+        route_name = true,
+        service_id = true,
+        service_name = true,
     }
 
     local mt = {
@@ -163,6 +234,31 @@ do
                     end
                 end
 
+            elseif core_str.has_prefix(key, "arg_") then
+                local arg_key = sub_str(key, 5)
+                local args = request.get_uri_args()[arg_key]
+                if args then
+                    if type(args) == "table" then
+                        val = args[1]
+                    else
+                        val = args
+                    end
+                end
+
+            elseif core_str.has_prefix(key, "post_arg_") then
+                -- only match default post form
+                if request.header(nil, "Content-Type") == "application/x-www-form-urlencoded" then
+                    local arg_key = sub_str(key, 10)
+                    local args = request.get_post_args()[arg_key]
+                    if args then
+                        if type(args) == "table" then
+                            val = args[1]
+                        else
+                            val = args
+                        end
+                    end
+                end
+
             elseif core_str.has_prefix(key, "http_") then
                 key = key:lower()
                 key = re_gsub(key, "-", "_", "jo")
@@ -171,34 +267,24 @@ do
             elseif core_str.has_prefix(key, "graphql_") then
                 -- trim the "graphql_" prefix
                 key = sub_str(key, 9)
-                val = get_parsed_graphql(t)[key]
-
-            elseif key == "route_id" then
-                val = ngx.ctx.api_ctx and ngx.ctx.api_ctx.route_id
-
-            elseif key == "service_id" then
-                val = ngx.ctx.api_ctx and ngx.ctx.api_ctx.service_id
-
-            elseif key == "consumer_name" then
-                val = ngx.ctx.api_ctx and ngx.ctx.api_ctx.consumer_name
-
-            elseif key == "route_name" then
-                val = ngx.ctx.api_ctx and ngx.ctx.api_ctx.route_name
-
-            elseif key == "service_name" then
-                val = ngx.ctx.api_ctx and ngx.ctx.api_ctx.service_name
-
-            elseif key == "balancer_ip" then
-                val = ngx.ctx.api_ctx and ngx.ctx.api_ctx.balancer_ip
-
-            elseif key == "balancer_port" then
-                val = ngx.ctx.api_ctx and ngx.ctx.api_ctx.balancer_port
+                val = get_parsed_graphql()[key]
 
             else
-                val = get_var(key, t._request)
+                local getter = apisix_var_names[key]
+                if getter then
+                    if getter == true then
+                        val = ngx.ctx.api_ctx and ngx.ctx.api_ctx[key]
+                    else
+                        -- the getter is registered by ctx.register_var
+                        val = getter(ngx.ctx.api_ctx)
+                    end
+
+                else
+                    val = get_var(key, t._request)
+                end
             end
 
-            if val ~= nil then
+            if val ~= nil and not no_cacheable_var_names[key] then
                 t._cache[key] = val
             end
 
@@ -214,6 +300,14 @@ do
             t._cache[key] = val
         end,
     }
+
+function _M.register_var(name, getter)
+    if type(getter) ~= "function" then
+        error("the getter of registered var should be a function")
+    end
+
+    apisix_var_names[name] = getter
+end
 
 function _M.set_vars_meta(ctx)
     local var = tablepool.fetch("ctx_var", 0, 32)

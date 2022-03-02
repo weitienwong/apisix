@@ -51,8 +51,9 @@ done
 --- config
     location /t {
         content_by_lua_block {
+            local core = require("apisix.core")
             local plugin = require("apisix.plugins.basic-auth")
-            local ok, err = plugin.check_schema({username = 123, password = "bar"})
+            local ok, err = plugin.check_schema({username = 123, password = "bar"}, core.schema.TYPE_CONSUMER)
             if not ok then
                 ngx.say(err)
             end
@@ -62,10 +63,9 @@ done
     }
 --- request
 GET /t
---- response_body_like eval
-qr/additional properties forbidden, found (username|password)
+--- response_body
+property "username" validation failed: wrong type: expected string, got number
 done
-/
 --- no_error_log
 [error]
 
@@ -163,7 +163,46 @@ GET /hello
 
 
 
-=== TEST 6: verify, invalid username
+=== TEST 6: verify, invalid basic authorization header
+--- request
+GET /hello
+--- more_headers
+Authorization: Bad_header YmFyOmJhcgo=
+--- error_code: 401
+--- response_body
+{"message":"Invalid authorization header format"}
+--- no_error_log
+[error]
+
+
+
+=== TEST 7: verify, invalid authorization value (bad base64 str)
+--- request
+GET /hello
+--- more_headers
+Authorization: Basic aca_a
+--- error_code: 401
+--- response_body
+{"message":"Failed to decode authentication header: aca_a"}
+--- no_error_log
+[error]
+
+
+
+=== TEST 8: verify, invalid authorization value (no password)
+--- request
+GET /hello
+--- more_headers
+Authorization: Basic YmFy
+--- error_code: 401
+--- response_body
+{"message":"Split authorization err: invalid decoded data: bar"}
+--- no_error_log
+[error]
+
+
+
+=== TEST 9: verify, invalid username
 --- request
 GET /hello
 --- more_headers
@@ -176,7 +215,7 @@ Authorization: Basic YmFyOmJhcgo=
 
 
 
-=== TEST 7: verify, invalid password
+=== TEST 10: verify, invalid password
 --- request
 GET /hello
 --- more_headers
@@ -189,7 +228,7 @@ Authorization: Basic Zm9vOmZvbwo=
 
 
 
-=== TEST 8: verify
+=== TEST 11: verify
 --- request
 GET /hello
 --- more_headers
@@ -203,7 +242,7 @@ find consumer foo
 
 
 
-=== TEST 9: invalid schema, only one field `username`
+=== TEST 12: invalid schema, only one field `username`
 --- config
     location /t {
         content_by_lua_block {
@@ -234,7 +273,7 @@ GET /t
 
 
 
-=== TEST 10: invalid schema, not field given
+=== TEST 13: invalid schema, not field given
 --- config
     location /t {
         content_by_lua_block {
@@ -264,7 +303,7 @@ qr/\{"error_msg":"invalid plugins configuration: failed to check the configurati
 
 
 
-=== TEST 11: invalid schema, not a table
+=== TEST 14: invalid schema, not a table
 --- config
     location /t {
         content_by_lua_block {
@@ -293,7 +332,7 @@ GET /t
 
 
 
-=== TEST 12: get the default schema
+=== TEST 15: get the default schema
 --- config
     location /t {
         content_by_lua_block {
@@ -302,7 +341,7 @@ GET /t
                 ngx.HTTP_GET,
                 nil,
                 [[
-{"properties":{"disable":{"type":"boolean"}},"title":"work with route or service object","additionalProperties":false,"type":"object"}
+{"properties":{"disable":{"type":"boolean"}},"title":"work with route or service object","type":"object"}
                 ]]
                 )
             ngx.status = code
@@ -315,7 +354,7 @@ GET /t
 
 
 
-=== TEST 13: get the schema by schema_type
+=== TEST 16: get the schema by schema_type
 --- config
     location /t {
         content_by_lua_block {
@@ -324,7 +363,7 @@ GET /t
                 ngx.HTTP_GET,
                 nil,
                 [[
-{"title":"work with consumer object","additionalProperties":false,"required":["username","password"],"properties":{"username":{"type":"string"},"password":{"type":"string"}},"type":"object"}
+{"title":"work with consumer object","required":["username","password"],"properties":{"username":{"type":"string"},"password":{"type":"string"}},"type":"object"}
                 ]]
                 )
             ngx.status = code
@@ -337,7 +376,7 @@ GET /t
 
 
 
-=== TEST 14: get the schema by error schema_type
+=== TEST 17: get the schema by error schema_type
 --- config
     location /t {
         content_by_lua_block {
@@ -346,7 +385,7 @@ GET /t
                 ngx.HTTP_GET,
                 nil,
                 [[
-{"properties":{"disable":{"type":"boolean"}},"title":"work with route or service object","additionalProperties":false,"type":"object"}
+{"properties":{"disable":{"type":"boolean"}},"title":"work with route or service object","type":"object"}
                 ]]
                 )
             ngx.status = code
@@ -354,5 +393,105 @@ GET /t
     }
 --- request
 GET /t
+--- no_error_log
+[error]
+
+
+
+=== TEST 18: enable basic auth plugin using admin api, set hide_credentials = true
+--- config
+    location /t {
+        content_by_lua_block {
+            local t = require("lib.test_admin").test
+            local code, body = t('/apisix/admin/routes/1',
+                ngx.HTTP_PUT,
+                [[{
+                    "plugins": {
+                        "basic-auth": {
+                            "hide_credentials": true
+                        }
+                    },
+                    "upstream": {
+                        "nodes": {
+                            "127.0.0.1:1980": 1
+                        },
+                        "type": "roundrobin"
+                    },
+                    "uri": "/echo"
+                }]]
+                )
+
+            if code >= 300 then
+                ngx.status = code
+            end
+            ngx.say(body)
+        }
+    }
+--- request
+GET /t
+--- response_body
+passed
+--- no_error_log
+[error]
+
+
+
+=== TEST 19: verify Authorization request header is hidden
+--- request
+GET /echo
+--- more_headers
+Authorization: Basic Zm9vOmJhcg==
+--- response_headers
+!Authorization
+--- no_error_log
+[error]
+
+
+
+=== TEST 20: enable basic auth plugin using admin api, hide_credentials = false
+--- config
+    location /t {
+        content_by_lua_block {
+            local t = require("lib.test_admin").test
+            local code, body = t('/apisix/admin/routes/1',
+                ngx.HTTP_PUT,
+                [[{
+                    "plugins": {
+                        "basic-auth": {
+                            "hide_credentials": false
+                        }
+                    },
+                    "upstream": {
+                        "nodes": {
+                            "127.0.0.1:1980": 1
+                        },
+                        "type": "roundrobin"
+                    },
+                    "uri": "/echo"
+                }]]
+                )
+
+            if code >= 300 then
+                ngx.status = code
+            end
+            ngx.say(body)
+        }
+    }
+--- request
+GET /t
+--- response_body
+passed
+--- no_error_log
+[error]
+
+
+
+=== TEST 21: verify Authorization request header should not hidden
+--- request
+GET /echo
+--- more_headers
+Authorization: Basic Zm9vOmJhcg==
+--- response_headers
+Authorization: Basic Zm9vOmJhcg==
 --- no_error_log
 [error]

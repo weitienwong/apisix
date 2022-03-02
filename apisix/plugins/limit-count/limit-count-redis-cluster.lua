@@ -29,13 +29,13 @@ local mt = {
 }
 
 
-local script = [=[
+local script = core.string.compress_script([=[
     if redis.call('ttl', KEYS[1]) < 0 then
         redis.call('set', KEYS[1], ARGV[1] - 1, 'EX', ARGV[2])
         return ARGV[1] - 1
     end
     return redis.call('incrby', KEYS[1], -1)
-]=]
+]=])
 
 
 local function new_redis_cluster(conf)
@@ -74,8 +74,11 @@ function _M.new(plugin_name, limit, window, conf)
     end
 
     local self = {
-        limit = limit, window = window, conf = conf,
-        plugin_name = plugin_name, red_cli =red_cli
+        limit = limit,
+        window = window,
+        conf = conf,
+        plugin_name = plugin_name,
+        red_cli = red_cli,
     }
 
     return setmetatable(self, mt)

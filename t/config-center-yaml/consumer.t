@@ -29,7 +29,6 @@ apisix:
     node_listen: 1984
     config_center: yaml
     enable_admin: false
-    enable_debug: true
 _EOC_
 
     $block->set_value("yaml_config", $yaml_config);
@@ -72,6 +71,10 @@ property "username" validation failed
 
 === TEST 2: validate the plugin under consumer
 --- apisix_yaml
+routes:
+  - uri: /apisix/plugin/jwt/sign
+    plugins:
+        public-api: {}
 consumers:
   - username: jwt
     plugins:
@@ -88,6 +91,10 @@ plugin jwt-auth err: property "key" is required
 
 === TEST 3: provide default value for the plugin
 --- apisix_yaml
+routes:
+  - uri: /apisix/plugin/jwt/sign
+    plugins:
+        public-api: {}
 consumers:
   - username: jwt
     plugins:

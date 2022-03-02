@@ -15,12 +15,14 @@
 -- limitations under the License.
 --
 local fetch_local_conf = require("apisix.core.config_local").local_conf
+local array_mt         = require("apisix.core.json").array_mt
 local etcd             = require("resty.etcd")
 local clone_tab        = require("table.clone")
+local health_check     = require("resty.etcd.health_check")
 local ipairs           = ipairs
+local setmetatable     = setmetatable
 local string           = string
 local tonumber         = tonumber
-
 local _M = {}
 
 
@@ -50,6 +52,18 @@ local function new()
             etcd_conf.ssl_cert_path = etcd_conf.tls.cert
             etcd_conf.ssl_key_path = etcd_conf.tls.key
         end
+
+        if etcd_conf.tls.sni then
+            etcd_conf.sni = etcd_conf.tls.sni
+        end
+    end
+
+    -- enable etcd health check retry for curr worker
+    if not health_check.conf then
+        health_check.init({
+            max_fails = #etcd_conf.http_host,
+            retry = true,
+        })
     end
 
     local etcd_cli
@@ -76,7 +90,7 @@ _M.kvs_to_node = kvs_to_node
 
 local function kvs_to_nodes(res)
     res.body.node.dir = true
-    res.body.node.nodes = {}
+    res.body.node.nodes = setmetatable({}, array_mt)
     for i=2, #res.body.kvs do
         res.body.node.nodes[i-1] = kvs_to_node(res.body.kvs[i])
     end
@@ -207,6 +221,7 @@ local function set(key, value, ttl)
             return nil, grant_err
         end
         res, err = etcd_cli:set(prefix .. key, value, {prev_kv = true, lease = data.body.ID})
+        res.body.lease_id = data.body.ID
     else
         res, err = etcd_cli:set(prefix .. key, value, {prev_kv = true})
     end
@@ -357,6 +372,21 @@ function _M.server_version()
     end
 
     return etcd_cli:version()
+end
+
+
+function _M.keepalive(id)
+    local etcd_cli, _, err = new()
+    if not etcd_cli then
+        return nil, err
+    end
+
+    local res, err = etcd_cli:keepalive(id)
+    if not res then
+        return nil, err
+    end
+
+    return res, nil
 end
 
 

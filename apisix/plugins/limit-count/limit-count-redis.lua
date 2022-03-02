@@ -29,20 +29,24 @@ local mt = {
 }
 
 
-local script = [=[
+local script = core.string.compress_script([=[
     if redis.call('ttl', KEYS[1]) < 0 then
         redis.call('set', KEYS[1], ARGV[1] - 1, 'EX', ARGV[2])
         return ARGV[1] - 1
     end
     return redis.call('incrby', KEYS[1], -1)
-]=]
+]=])
 
 
 function _M.new(plugin_name, limit, window, conf)
     assert(limit > 0 and window > 0)
 
-    local self = {limit = limit, window = window, conf = conf,
-                  plugin_name = plugin_name}
+    local self = {
+        limit = limit,
+        window = window,
+        conf = conf,
+        plugin_name = plugin_name,
+    }
     return setmetatable(self, mt)
 end
 

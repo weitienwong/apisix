@@ -23,6 +23,15 @@ title: CHANGELOG
 
 ## Table of Contents
 
+- [2.12.1](#2121)
+- [2.12.0](#2120)
+- [2.11.0](#2110)
+- [2.10.4](#2104)
+- [2.10.3](#2103)
+- [2.10.2](#2102)
+- [2.10.1](#2101)
+- [2.10.0](#2100)
+- [2.9.0](#290)
 - [2.8.0](#280)
 - [2.7.0](#270)
 - [2.6.0](#260)
@@ -43,6 +52,188 @@ title: CHANGELOG
 - [0.8.0](#080)
 - [0.7.0](#070)
 - [0.6.0](#060)
+
+## 2.12.1
+
+**这是一个 LTS 维护版本，您可以在 `release/2.12` 分支中看到 CHANGELOG。**
+
+## 2.12.0
+
+### Change
+
+- 重命名 serverless 插件的 "balancer" phase 为 "before_proxy" [#5992](https://github.com/apache/apisix/pull/5992)
+- 不再承诺支持 Tengine [#5961](https://github.com/apache/apisix/pull/5961)
+- 当 L4 支持 和 Admin API 都启用时，自动开启 HTTP 支持 [#5867](https://github.com/apache/apisix/pull/5867)
+
+### Core
+
+- :sunrise: 支持 TLS over TCP upstream [#6030](https://github.com/apache/apisix/pull/6030)
+- :sunrise: 支持自定义 APISIX variable [#5941](https://github.com/apache/apisix/pull/5941)
+- :sunrise: 支持集成 Vault [#5745](https://github.com/apache/apisix/pull/5745)
+- :sunrise: 支持 L4 的 access log [#5768](https://github.com/apache/apisix/pull/5768)
+- :sunrise: 支持自定义 http_server_location_configuration_snippet 配置 [#5740](https://github.com/apache/apisix/pull/5740)
+- :sunrise: 支持配置文件环境变量中设置默认值 [#5675](https://github.com/apache/apisix/pull/5675)
+- :sunrise: 支持在 header_filter 阶段运行 Wasm 代码 [#5544](https://github.com/apache/apisix/pull/5544)
+
+### Plugin
+
+- :sunrise: 支持在 basic-auth 中隐藏 Authorization 请求头 [#6039](https://github.com/apache/apisix/pull/6039)
+- :sunrise: 支持动态设置 proxy_request_buffering [#6075](https://github.com/apache/apisix/pull/6075)
+- :sunrise: mqtt 支持通过 client id 负载均衡 [#6079](https://github.com/apache/apisix/pull/6079)
+- :sunrise: 添加 forward-auth 插件 [#6037](https://github.com/apache/apisix/pull/6037)
+- :sunrise: 支持 gRPC-Web 代理 [#5964](https://github.com/apache/apisix/pull/5964)
+- :sunrise: limit-count 支持请求间共享计数器 [#5984](https://github.com/apache/apisix/pull/5984)
+- :sunrise: limit-count 支持在路由间共享计数器 [#5881](https://github.com/apache/apisix/pull/5881)
+- :sunrise: 新增 splunk hec logging 插件 [#5819](https://github.com/apache/apisix/pull/5819)
+- :sunrise: 新增 OPA 插件 [#5734](https://github.com/apache/apisix/pull/5734)
+- :sunrise: 新增 rocketmq logger 插件 [#5653](https://github.com/apache/apisix/pull/5653)
+- :sunrise: mqtt 支持直接使用 route 上配置的 upstream [#5666](https://github.com/apache/apisix/pull/5666)
+- :sunrise: ext-plugin 支持获取请求体 [#5600](https://github.com/apache/apisix/pull/5600)
+- :sunrise: 新增 aws lambda 插件 [#5594](https://github.com/apache/apisix/pull/5594)
+- :sunrise: http/kafka-logger 插件支持记录响应体 [#5550](https://github.com/apache/apisix/pull/5550)
+- :sunrise: 新增 Apache OpenWhisk 插件 [#5518](https://github.com/apache/apisix/pull/5518)
+- :sunrise: 支持 google cloud logging service [#5538](https://github.com/apache/apisix/pull/5538)
+
+### Bugfix
+
+- 同时启用 error-log-logger 和 prometheusis 时报告 labels inconsistent 的问题 [#6055](https://github.com/apache/apisix/pull/6055)
+- 支持禁止 IPv6 IP 解析 [#6023](https://github.com/apache/apisix/pull/6023)
+- 正确处理 MQTT 5 中的 properties [#5916](https://github.com/apache/apisix/pull/5916)
+- sls-logger 上报的 timestamp 补上毫秒部分 [#5820](https://github.com/apache/apisix/pull/5820)
+- MQTT 中的 client id 可以为空 [#5816](https://github.com/apache/apisix/pull/5816)
+- ext-plugin 避免使用过期的 key [#5782](https://github.com/apache/apisix/pull/5782)
+- 解决 log-rotate 中 reopen log 和压缩中的 race [#5715](https://github.com/apache/apisix/pull/5715)
+- 释放 batch-processor 中过期对象 [#5700](https://github.com/apache/apisix/pull/5700)
+- 解决被动健康检查时配置被污染的问题 [#5589](https://github.com/apache/apisix/pull/5589)
+
+## 2.11.0
+
+### Change
+
+- wolf-rbac 插件变更默认端口，并在文档中增加 authType 参数 [#5477](https://github.com/apache/apisix/pull/5477)
+
+### Core
+
+- :sunrise: 支持基于 POST 表单的高级路由匹配 [#5409](https://github.com/apache/apisix/pull/5409)
+- :sunrise: 初步的 WASM 支持 [#5288](https://github.com/apache/apisix/pull/5288)
+- :sunrise: control API 暴露 service 配置 [#5271](https://github.com/apache/apisix/pull/5271)
+- :sunrise: control API 暴露 upstream 配置 [#5259](https://github.com/apache/apisix/pull/5259)
+- :sunrise: 支持在 etcd 少于半数节点不可用时成功启动 [#5158](https://github.com/apache/apisix/pull/5158)
+- :sunrise: 支持 etcd 配置里面自定义 SNI [#5206](https://github.com/apache/apisix/pull/5206)
+
+### Plugin
+
+- :sunrise: 新增 Azure-functions 插件 [#5479](https://github.com/apache/apisix/pull/5479)
+- :sunrise: kafka-logger 支持动态记录请求体 [#5501](https://github.com/apache/apisix/pull/5501)
+- :sunrise: 新增 skywalking-logger 插件 [#5478](https://github.com/apache/apisix/pull/5478)
+- :sunrise: 新增 datadog 插件 [#5372](https://github.com/apache/apisix/pull/5372)
+- :sunrise: limit-* 系列插件，在 key 对应的值不存在时，回退到用客户端地址作为限流的 key [#5422](https://github.com/apache/apisix/pull/5422)
+- :sunrise: limit-count 支持使用多个变量作为 key [#5378](https://github.com/apache/apisix/pull/5378)
+- :sunrise: limit-conn 支持使用多个变量作为 key [#5354](https://github.com/apache/apisix/pull/5354)
+- :sunrise: proxy-rewrite 支持改写 HTTP method [#5292](https://github.com/apache/apisix/pull/5292)
+- :sunrise: limit-req 支持使用多个变量作为 key [#5302](https://github.com/apache/apisix/pull/5302)
+- :sunrise: proxy-cache 支持基于内存的缓存机制 [#5028](https://github.com/apache/apisix/pull/5028)
+- :sunrise: ext-plugin 避免发送重复的 conf 请求 [#5183](https://github.com/apache/apisix/pull/5183)
+- :sunrise: 新增 ldap-auth 插件 [#3894](https://github.com/apache/apisix/pull/3894)
+
+## 2.10.4
+
+**这是一个 LTS 维护版本，您可以在 `release/2.10` 分支中看到 CHANGELOG。**
+
+[https://github.com/apache/apisix/blob/release/2.10/CHANGELOG.md#2104](https://github.com/apache/apisix/blob/release/2.10/CHANGELOG.md#2104)
+
+## 2.10.3
+
+**这是一个 LTS 维护版本，您可以在 `release/2.10` 分支中看到 CHANGELOG。**
+
+[https://github.com/apache/apisix/blob/release/2.10/CHANGELOG.md#2103](https://github.com/apache/apisix/blob/release/2.10/CHANGELOG.md#2103)
+
+## 2.10.2
+
+**这是一个 LTS 维护版本，您可以在 `release/2.10` 分支中看到 CHANGELOG。**
+
+[https://github.com/apache/apisix/blob/release/2.10/CHANGELOG.md#2102](https://github.com/apache/apisix/blob/release/2.10/CHANGELOG.md#2102)
+
+## 2.10.1
+
+**这是一个 LTS 维护版本，您可以在 `release/2.10` 分支中看到 CHANGELOG。**
+
+[https://github.com/apache/apisix/blob/release/2.10/CHANGELOG.md#2101](https://github.com/apache/apisix/blob/release/2.10/CHANGELOG.md#2101)
+
+## 2.10.0
+
+### Change
+
+- 将 enable_debug 配置从 config.yaml 移到 debug.yaml [#5046](https://github.com/apache/apisix/pull/5046)
+- 更改自定义 lua_shared_dict 配置的名称 [#5030](https://github.com/apache/apisix/pull/5030)
+- 不再提供 APISIX 安装 shell 脚本 [#4985](https://github.com/apache/apisix/pull/4985)
+
+### Core
+
+- :sunrise: debug-mode 支持动态请求过滤 [#5012](https://github.com/apache/apisix/pull/5012)
+- :sunrise: 支持注入逻辑到 APISIX 方法中 [#5068](https://github.com/apache/apisix/pull/5068)
+- :sunrise: 支持配置 fallback SNI [#5000](https://github.com/apache/apisix/pull/5000)
+- :sunrise: stream_route 支持在 IP 匹配中使用 CIDR [#4980](https://github.com/apache/apisix/pull/4980)
+- :sunrise: 支持 route 从 service 中继承 hosts [#4977](https://github.com/apache/apisix/pull/4977)
+- :sunrise: 改善数据面监听地址的配置 [#4856](https://github.com/apache/apisix/pull/4856)
+
+### Plugin
+
+- :sunrise: hmac-auth 支持校验请求体 [#5038](https://github.com/apache/apisix/pull/5038)
+- :sunrise: proxy-mirror 支持控制镜像流量的比例 [#4965](https://github.com/apache/apisix/pull/4965)
+- :sunrise: referer-restriction 增加黑名单和自定义信息 [#4916](https://github.com/apache/apisix/pull/4916)
+- :sunrise: kafka-logger 增加 cluster 支持 [#4876](https://github.com/apache/apisix/pull/4876)
+- :sunrise: kafka-logger 增加 required_acks 选项 [#4878](https://github.com/apache/apisix/pull/4878)
+- :sunrise: uri-blocker 支持大小写无关的匹配 [#4868](https://github.com/apache/apisix/pull/4868)
+
+### Bugfix
+
+- radixtree_host_uri 路由更正匹配结果的 host [#5124](https://github.com/apache/apisix/pull/5124)
+- radixtree_host_uri 路由更正匹配结果的 path [#5104](https://github.com/apache/apisix/pull/5104)
+- Nacos 服务发现，区分处于不同 group/namespace 的同名 service [#5083](https://github.com/apache/apisix/pull/5083)
+- Nacos 服务发现，当一个服务的地址获取失败后，继续处理剩下的服务 [#5112](https://github.com/apache/apisix/pull/5112)
+- 匹配 SNI 时需要大小写无关 [#5074](https://github.com/apache/apisix/pull/5074)
+- upstream 的 keepalive_pool 配置，缺省时不应覆盖默认的 keepalive 配置 [#5054](https://github.com/apache/apisix/pull/5054)
+- DNS 服务发现，优先查询 SRV 记录 [#4992](https://github.com/apache/apisix/pull/4992)
+- Consul 服务发现，重试前需等待一段时间 [#4979](https://github.com/apache/apisix/pull/4979)
+- 当 upstream domain 背后的 IP 改变时，避免复制多余数据 [#4952](https://github.com/apache/apisix/pull/4952)
+- 当 plugin_config 变化时，恢复之前被覆盖的配置 [#4888](https://github.com/apache/apisix/pull/4888)
+
+## 2.9.0
+
+### Change
+
+- 为避免误解，将插件中的 balancer 方法改成 before_proxy [#4697](https://github.com/apache/apisix/pull/4697)
+
+### Core
+
+- :sunrise: 增大总 timer 数的限制 [#4843](https://github.com/apache/apisix/pull/4843)
+- :sunrise: 移除禁止额外字段的检验，方便给 APISIX 做 A/B 测试 [#4797](https://github.com/apache/apisix/pull/4797)
+- :sunrise: 支持在 arg 变量中使用 '-' (#4519) [#4676](https://github.com/apache/apisix/pull/4676)
+- :sunrise: Admin API 拒绝错误的 proto 文件内容 [#4750](https://github.com/apache/apisix/pull/4750)
+
+### Plugin
+
+- :sunrise: ext-plugin 插件允许 Runner 查询请求信息 [#4835](https://github.com/apache/apisix/pull/4835)
+- :sunrise: gzip 插件支持通过 * 匹配任意类型 [#4817](https://github.com/apache/apisix/pull/4817)
+- :sunrise: 增加 real-ip 插件 [#4813](https://github.com/apache/apisix/pull/4813)
+- :sunrise: limit-* 系列插件允许自定义请求拒绝信息 [#4808](https://github.com/apache/apisix/pull/4808)
+- :sunrise: request-id 插件增加 snowflake 算法支持 [#4559](https://github.com/apache/apisix/pull/4559)
+- :sunrise: 增加 authz-casbin 插件 [#4710](https://github.com/apache/apisix/pull/4710)
+- :sunrise: error-log-logger 插件增加 skywalking 后端 [#4633](https://github.com/apache/apisix/pull/4633)
+- :sunrise: ext-plugin 插件在发送配置时会额外发送一个 idempotent key [#4736](https://github.com/apache/apisix/pull/4736)
+
+### Bugfix
+
+- 避免特定条件下缓存过期的全局规则 [#4867](https://github.com/apache/apisix/pull/4867)
+- grpc-transcode 插件支持嵌套信息 [#4859](https://github.com/apache/apisix/pull/4859)
+- authz-keycloak 插件避免当 lazy_load_path 为 false 且没有配置 permissions 时出错 [#4845](https://github.com/apache/apisix/pull/4845)
+- proxy-cache 插件保持 cache_method 配置和 nginx's proxy_cache_methods 一致 [#4814](https://github.com/apache/apisix/pull/4814)
+- Admin API 确保 PATCH with sub path 时也能注入 updatetime [#4765](https://github.com/apache/apisix/pull/4765)
+- Admin API 更新 consumer 时校验 username [#4756](https://github.com/apache/apisix/pull/4756)
+- error-log-logger 插件避免发送过期的错误日志 [#4690](https://github.com/apache/apisix/pull/4690)
+- grpc-transcode 插件支持 enum 类型 [#4706](https://github.com/apache/apisix/pull/4706)
+- 当非 HEAD/GET 请求触发 500 错误时，会被错误转成 405 [#4696](https://github.com/apache/apisix/pull/4696)
 
 ## 2.8.0
 
